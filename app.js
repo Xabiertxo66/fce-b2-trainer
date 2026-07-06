@@ -17,6 +17,20 @@ let S = Object.assign({
   drafts: {}            // { taskId: texto }
 }, store.load());
 
+// Migración: ids antiguos (una sola batería) → ids con índice de batería
+(function migrateIds() {
+  const map = { mcCloze: "mcCloze0", openCloze: "openCloze0", wordForm: "wordForm0", transform: "transform0", reading: "reading0", grammar: "grammar0" };
+  let changed = false;
+  for (const [oldId, newId] of Object.entries(map)) {
+    if (S.completed[oldId] !== undefined) {
+      S.completed[newId] = Math.max(S.completed[newId] || 0, S.completed[oldId]);
+      delete S.completed[oldId];
+      changed = true;
+    }
+  }
+  if (changed) store.save(S);
+})();
+
 function persist() { store.save(S); updatePills(); }
 
 // Racha diaria
@@ -77,6 +91,22 @@ function banner(scored, total) {
   return `<div class="result-banner ${cls}">${scored}/${total} correctas (${pct}%) — ${msg}</div>`;
 }
 
+// Selector de batería (Texto 1 / Texto 2 / …) con marca de superado
+function setPickerHTML(sets, current, baseId) {
+  return `<div class="tabs" data-setpicker>
+    ${sets.map((s, i) => {
+      const done = (S.completed[baseId + i] || 0) >= 75 ? " ✅" : "";
+      return `<button class="tab-btn ${i === current ? "active" : ""}" data-set="${i}">${s.name}${done}</button>`;
+    }).join("")}
+  </div>`;
+}
+
+function bindSetPicker(container, rerender) {
+  container.querySelectorAll("[data-setpicker] .tab-btn").forEach(b => {
+    b.addEventListener("click", () => rerender(+b.dataset.set));
+  });
+}
+
 // ---------- Navegación ----------
 const views = {};
 document.querySelectorAll(".nav-btn").forEach(btn => {
@@ -90,14 +120,30 @@ document.querySelectorAll(".nav-btn").forEach(btn => {
 });
 
 // ---------- Vista: Inicio ----------
+function moduleIds() {
+  return {
+    reading: [
+      ...DATA.mcCloze.sets.map((_, i) => "mcCloze" + i),
+      ...DATA.openCloze.sets.map((_, i) => "openCloze" + i),
+      ...DATA.wordFormation.sets.map((_, i) => "wordForm" + i),
+      ...DATA.transformations.sets.map((_, i) => "transform" + i),
+      ...DATA.reading.sets.map((_, i) => "reading" + i)
+    ],
+    listening: DATA.listening.map((_, i) => "listen" + i),
+    grammar: DATA.grammar.sets.map((_, i) => "grammar" + i)
+  };
+}
+
 views.home = function () {
+  const ids = moduleIds();
+  const nRU = ids.reading.length;
   const modules = [
-    { view: "reading", emoji: "📖", name: "Reading & Use of English", desc: "Cloze, word formation, transformaciones y comprensión lectora.", ids: ["mcCloze", "openCloze", "wordForm", "transform", "reading"] },
+    { view: "reading", emoji: "📖", name: "Reading & Use of English", desc: `${nRU} ejercicios: cloze, word formation, transformaciones y lecturas.`, ids: ids.reading },
     { view: "writing", emoji: "✍️", name: "Writing", desc: "Essay, article, email y review con guías y corrector de extensión.", ids: [] },
-    { view: "listening", emoji: "🎧", name: "Listening", desc: "Audios con preguntas de comprensión.", ids: ["listen0", "listen1"] },
+    { view: "listening", emoji: "🎧", name: "Listening", desc: `${DATA.listening.length} audios con preguntas de comprensión.`, ids: ids.listening },
     { view: "speaking", emoji: "🗣️", name: "Speaking", desc: "Las 4 partes del oral con temporizador real.", ids: [] },
-    { view: "vocab", emoji: "🃏", name: "Vocabulario", desc: "30 flashcards de phrasal verbs y expresiones B2.", ids: [] },
-    { view: "grammar", emoji: "🧩", name: "Gramática", desc: "Quiz de las estructuras que más caen en el examen.", ids: ["grammar"] }
+    { view: "vocab", emoji: "🃏", name: "Vocabulario", desc: `${DATA.flashcards.length} flashcards de phrasal verbs y expresiones B2.`, ids: [] },
+    { view: "grammar", emoji: "🧩", name: "Gramática", desc: `${DATA.grammar.sets.length} quizzes de las estructuras que más caen.`, ids: ids.grammar }
   ];
 
   main.innerHTML = `
@@ -159,7 +205,7 @@ views.reading = function () {
   main.innerHTML = `
     <div class="view-header">
       <h2>📖 Reading &amp; Use of English</h2>
-      <p class="sub">La prueba más larga del examen (40% de la nota). Practica cada parte por separado.</p>
+      <p class="sub">La prueba más larga del examen (40% de la nota). Practica cada parte por separado: cada una tiene varias baterías de ejercicios.</p>
     </div>
     <div class="tabs" id="ruTabs">
       <button class="tab-btn active" data-tab="p1">Part 1 · Cloze</button>
@@ -175,10 +221,10 @@ views.reading = function () {
     b.addEventListener("click", () => {
       document.querySelectorAll("#ruTabs .tab-btn").forEach(x => x.classList.remove("active"));
       b.classList.add("active");
-      tabs[b.dataset.tab]();
+      tabs[b.dataset.tab](0);
     });
   });
-  renderMcCloze();
+  renderMcCloze(0);
 };
 
 function gapTextHTML(parts, gapHTML) {
@@ -186,69 +232,77 @@ function gapTextHTML(parts, gapHTML) {
   return parts.map(p => typeof p === "number" ? gapHTML(p) : p.replace(/\n\n/g, "<br><br>")).join("");
 }
 
-function renderMcCloze() {
-  const d = DATA.mcCloze;
+function renderMcCloze(setIdx) {
+  const D = DATA.mcCloze;
+  const set = D.sets[setIdx];
   const c = document.getElementById("ruContent");
   c.innerHTML = `
+    ${setPickerHTML(D.sets, setIdx, "mcCloze")}
     <div class="card">
-      <h3>${d.title}</h3>
-      <p class="hint">${d.instructions}</p>
-      <p class="gap-text">${gapTextHTML(d.text, i => `
+      <h3>${D.title} — ${set.name}</h3>
+      <p class="hint">${D.instructions}</p>
+      <p class="gap-text">${gapTextHTML(set.text, i => `
         <select class="gap-select" data-gap="${i}">
           <option value="">(${i + 1}) …</option>
-          ${d.gaps[i].options.map((o, j) => `<option value="${j}">${"ABCD"[j]} ${o}</option>`).join("")}
+          ${set.gaps[i].options.map((o, j) => `<option value="${j}">${"ABCD"[j]} ${o}</option>`).join("")}
         </select>`)}</p>
       <br><button class="btn" id="checkP1">Corregir</button>
       <div id="resP1"></div>
     </div>`;
+  bindSetPicker(c, renderMcCloze);
 
   document.getElementById("checkP1").addEventListener("click", () => {
     let ok = 0;
     c.querySelectorAll(".gap-select").forEach(sel => {
-      const g = d.gaps[+sel.dataset.gap];
+      const g = set.gaps[+sel.dataset.gap];
       const right = +sel.value === g.answer;
       sel.classList.remove("gap-correct", "gap-wrong");
       sel.classList.add(right ? "gap-correct" : "gap-wrong");
       if (right) ok++; else sel.title = `Correcta: ${g.options[g.answer]}`;
     });
-    finishExercise("mcCloze", ok, d.gaps.length, "resP1");
+    finishExercise("mcCloze" + setIdx, ok, set.gaps.length, "resP1");
   });
 }
 
-function renderOpenCloze() {
-  const d = DATA.openCloze;
+function renderOpenCloze(setIdx) {
+  const D = DATA.openCloze;
+  const set = D.sets[setIdx];
   const c = document.getElementById("ruContent");
   c.innerHTML = `
+    ${setPickerHTML(D.sets, setIdx, "openCloze")}
     <div class="card">
-      <h3>${d.title}</h3>
-      <p class="hint">${d.instructions}</p>
-      <p class="gap-text">${gapTextHTML(d.text, i =>
+      <h3>${D.title} — ${set.name}</h3>
+      <p class="hint">${D.instructions}</p>
+      <p class="gap-text">${gapTextHTML(set.text, i =>
         `<input class="gap-input" data-gap="${i}" placeholder="(${i + 1})" autocomplete="off">`)}</p>
       <br><button class="btn" id="checkP2">Corregir</button>
       <div id="resP2"></div>
     </div>`;
+  bindSetPicker(c, renderOpenCloze);
 
   document.getElementById("checkP2").addEventListener("click", () => {
     let ok = 0;
     c.querySelectorAll(".gap-input").forEach(inp => {
-      const g = d.gaps[+inp.dataset.gap];
+      const g = set.gaps[+inp.dataset.gap];
       const right = g.answers.includes(norm(inp.value));
       inp.classList.remove("gap-correct", "gap-wrong");
       inp.classList.add(right ? "gap-correct" : "gap-wrong");
       if (right) ok++; else inp.title = `Correcta: ${g.answers[0]}`;
     });
-    finishExercise("openCloze", ok, d.gaps.length, "resP2");
+    finishExercise("openCloze" + setIdx, ok, set.gaps.length, "resP2");
   });
 }
 
-function renderWordFormation() {
-  const d = DATA.wordFormation;
+function renderWordFormation(setIdx) {
+  const D = DATA.wordFormation;
+  const set = D.sets[setIdx];
   const c = document.getElementById("ruContent");
   c.innerHTML = `
+    ${setPickerHTML(D.sets, setIdx, "wordForm")}
     <div class="card">
-      <h3>${d.title}</h3>
-      <p class="hint">${d.instructions}</p>
-      ${d.items.map((it, i) => `
+      <h3>${D.title} — ${set.name}</h3>
+      <p class="hint">${D.instructions}</p>
+      ${set.items.map((it, i) => `
         <div class="question">
           <div class="q-text">${i + 1}. ${it.sentence.replace("___", `<input class="gap-input" data-i="${i}" autocomplete="off">`)}
             <span style="color:var(--primary);font-weight:700"> ${it.root}</span></div>
@@ -256,28 +310,31 @@ function renderWordFormation() {
       <button class="btn" id="checkP3">Corregir</button>
       <div id="resP3"></div>
     </div>`;
+  bindSetPicker(c, renderWordFormation);
 
   document.getElementById("checkP3").addEventListener("click", () => {
     let ok = 0;
     c.querySelectorAll(".gap-input").forEach(inp => {
-      const it = d.items[+inp.dataset.i];
+      const it = set.items[+inp.dataset.i];
       const right = it.answers.includes(norm(inp.value));
       inp.classList.remove("gap-correct", "gap-wrong");
       inp.classList.add(right ? "gap-correct" : "gap-wrong");
       if (right) ok++; else inp.title = `Correcta: ${it.answers[0]}`;
     });
-    finishExercise("wordForm", ok, d.items.length, "resP3");
+    finishExercise("wordForm" + setIdx, ok, set.items.length, "resP3");
   });
 }
 
-function renderTransformations() {
-  const d = DATA.transformations;
+function renderTransformations(setIdx) {
+  const D = DATA.transformations;
+  const set = D.sets[setIdx];
   const c = document.getElementById("ruContent");
   c.innerHTML = `
+    ${setPickerHTML(D.sets, setIdx, "transform")}
     <div class="card">
-      <h3>${d.title}</h3>
-      <p class="hint">${d.instructions}</p>
-      ${d.items.map((it, i) => `
+      <h3>${D.title} — ${set.name}</h3>
+      <p class="hint">${D.instructions}</p>
+      ${set.items.map((it, i) => `
         <div class="question">
           <div class="q-text">${i + 1}. ${it.first}</div>
           <div style="margin:4px 0;color:var(--primary);font-weight:700">${it.key}</div>
@@ -287,41 +344,45 @@ function renderTransformations() {
       <button class="btn" id="checkP4">Corregir</button>
       <div id="resP4"></div>
     </div>`;
+  bindSetPicker(c, renderTransformations);
 
   document.getElementById("checkP4").addEventListener("click", () => {
     let ok = 0;
     c.querySelectorAll(".gap-input").forEach(inp => {
-      const it = d.items[+inp.dataset.i];
+      const it = set.items[+inp.dataset.i];
       const right = it.answers.includes(norm(inp.value));
       inp.classList.remove("gap-correct", "gap-wrong");
       inp.classList.add(right ? "gap-correct" : "gap-wrong");
       if (right) ok++;
       else document.getElementById(`noteT${inp.dataset.i}`).textContent = `✔️ Respuesta: ${it.answers[0]}`;
     });
-    finishExercise("transform", ok, d.items.length, "resP4");
+    finishExercise("transform" + setIdx, ok, set.items.length, "resP4");
   });
 }
 
-function renderReading() {
-  const d = DATA.reading;
+function renderReading(setIdx) {
+  const D = DATA.reading;
+  const set = D.sets[setIdx];
   const c = document.getElementById("ruContent");
   c.innerHTML = `
+    ${setPickerHTML(D.sets, setIdx, "reading")}
     <div class="card">
-      <h3>${d.title}</h3>
-      <p class="hint">${d.instructions}</p>
+      <h3>${D.title} — ${set.name}</h3>
+      <p class="hint">${D.instructions}</p>
       <div class="reading-passage">
-        <h4>${d.passageTitle}</h4>
-        ${d.passage.map(p => `<p>${p}</p>`).join("")}
+        <h4>${set.passageTitle}</h4>
+        ${set.passage.map(p => `<p>${p}</p>`).join("")}
       </div>
       <div id="readingQs"></div>
       <button class="btn" id="checkP5">Corregir</button>
       <div id="resP5"></div>
     </div>`;
-  renderMCQuestions(document.getElementById("readingQs"), d.questions, "rq");
+  bindSetPicker(c, renderReading);
+  renderMCQuestions(document.getElementById("readingQs"), set.questions, "rq");
 
   document.getElementById("checkP5").addEventListener("click", () => {
-    const ok = gradeMCQuestions(d.questions, "rq");
-    finishExercise("reading", ok, d.questions.length, "resP5");
+    const ok = gradeMCQuestions(set.questions, "rq");
+    finishExercise("reading" + setIdx, ok, set.questions.length, "resP5");
   });
 }
 
@@ -480,9 +541,10 @@ views.listening = function () {
 
   const c = document.getElementById("lContent");
   DATA.listening.forEach((rec, r) => {
+    const done = (S.completed["listen" + r] || 0) >= 75 ? " ✅" : "";
     const card = el(`
       <div class="card">
-        <h3>${rec.title}</h3>
+        <h3>${rec.title}${done}</h3>
         <div class="audio-controls">
           <button class="btn" data-act="play">▶️ Reproducir</button>
           <button class="btn secondary" data-act="stop">⏹️ Parar</button>
@@ -632,7 +694,7 @@ views.vocab = function () {
   main.innerHTML = `
     <div class="view-header">
       <h2>🃏 Vocabulario B2</h2>
-      <p class="sub">Phrasal verbs y expresiones que caen constantemente en el examen. Haz clic en la tarjeta para ver el significado. Marca las que ya domines.</p>
+      <p class="sub">${cards.length} phrasal verbs y expresiones que caen constantemente en el examen. Haz clic en la tarjeta para ver el significado. Marca las que ya domines.</p>
     </div>
     <div class="card">
       <div class="flashcard-wrap">
@@ -650,9 +712,10 @@ views.vocab = function () {
           <span class="flash-counter" id="fCounter"></span>
           <button class="btn secondary small" id="fNext">Siguiente →</button>
         </div>
-        <div style="display:flex;gap:10px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
           <button class="btn accent small" id="fKnown">✅ Ya me la sé</button>
           <button class="btn secondary small" id="fShuffle">🔀 Barajar</button>
+          <button class="btn secondary small" id="fPending">🎯 Solo pendientes</button>
         </div>
         <p class="hint" id="fStats"></p>
       </div>
@@ -660,6 +723,13 @@ views.vocab = function () {
 
   const cardEl = document.getElementById("fCard");
   let order = cards.map((_, i) => i);
+  let onlyPending = false;
+
+  function rebuildOrder() {
+    order = cards.map((_, i) => i).filter(i => !onlyPending || !known.has(i));
+    if (order.length === 0) order = cards.map((_, i) => i);
+    if (idx >= order.length) idx = 0;
+  }
 
   function render() {
     const c = cards[order[idx]];
@@ -670,6 +740,7 @@ views.vocab = function () {
     document.getElementById("fCounter").textContent = `${idx + 1} / ${order.length}`;
     document.getElementById("fStats").textContent = `Dominadas: ${known.size} de ${cards.length} 🌟`;
     document.getElementById("fKnown").textContent = known.has(order[idx]) ? "⭐ Dominada" : "✅ Ya me la sé";
+    document.getElementById("fPending").textContent = onlyPending ? "📚 Ver todas" : "🎯 Solo pendientes";
   }
 
   cardEl.addEventListener("click", () => cardEl.classList.toggle("flipped"));
@@ -681,6 +752,12 @@ views.vocab = function () {
     render();
     toast("Tarjetas barajadas 🔀");
   });
+  document.getElementById("fPending").addEventListener("click", () => {
+    onlyPending = !onlyPending;
+    idx = 0;
+    rebuildOrder();
+    render();
+  });
   document.getElementById("fKnown").addEventListener("click", () => {
     const real = order[idx];
     if (!known.has(real)) {
@@ -691,6 +768,7 @@ views.vocab = function () {
     }
     localStorage.setItem("fce_known_cards", JSON.stringify([...known]));
     markCompleted("vocab", Math.round(known.size / cards.length * 100));
+    if (onlyPending) rebuildOrder();
     render();
   });
 
@@ -698,47 +776,49 @@ views.vocab = function () {
 };
 
 // ---------- Vista: Gramática ----------
-views.grammar = function () {
+views.grammar = function (setIdx) {
+  setIdx = setIdx || 0;
+  const D = DATA.grammar;
+  const set = D.sets[setIdx];
+
   main.innerHTML = `
     <div class="view-header">
       <h2>🧩 Gramática B2</h2>
-      <p class="sub">Las 12 estructuras que más aparecen en el examen. Cada pregunta trae una mini-explicación al corregir.</p>
+      <p class="sub">Las estructuras que más aparecen en el examen. Cada pregunta trae una mini-explicación al corregir.</p>
     </div>
+    ${setPickerHTML(D.sets, setIdx, "grammar")}
     <div class="card">
       <div id="gQs"></div>
       <button class="btn" id="gCheck">Corregir</button>
       <div id="gRes"></div>
     </div>`;
 
-  renderMCQuestions(document.getElementById("gQs"), DATA.grammar, "gq");
+  bindSetPicker(main, views.grammar);
+  renderMCQuestions(document.getElementById("gQs"), set.items, "gq");
   document.getElementById("gCheck").addEventListener("click", () => {
-    const ok = gradeMCQuestions(DATA.grammar, "gq");
-    DATA.grammar.forEach((q, i) => {
+    const ok = gradeMCQuestions(set.items, "gq");
+    set.items.forEach((q, i) => {
       const qEl = document.querySelector(`[data-q="gq${i}"]`);
       if (!qEl.querySelector(".answer-note")) {
         qEl.insertAdjacentHTML("beforeend", `<div class="answer-note">💡 ${q.note}</div>`);
       }
     });
-    finishExercise("grammar", ok, DATA.grammar.length, "gRes");
+    finishExercise("grammar" + setIdx, ok, set.items.length, "gRes");
   });
 };
 
 // ---------- Vista: Progreso ----------
 views.progress = function () {
   const sections = [
-    { label: "📖 Multiple-choice cloze", id: "mcCloze" },
-    { label: "📖 Open cloze", id: "openCloze" },
-    { label: "📖 Word formation", id: "wordForm" },
-    { label: "📖 Transformations", id: "transform" },
-    { label: "📖 Reading comprehension", id: "reading" },
-    { label: "🎧 Listening 1", id: "listen0" },
-    { label: "🎧 Listening 2", id: "listen1" },
-    { label: "🧩 Gramática", id: "grammar" },
+    ...DATA.mcCloze.sets.map((s, i) => ({ label: `📖 Cloze · ${s.name}`, id: "mcCloze" + i })),
+    ...DATA.openCloze.sets.map((s, i) => ({ label: `📖 Open cloze · ${s.name}`, id: "openCloze" + i })),
+    ...DATA.wordFormation.sets.map((s, i) => ({ label: `📖 Word formation · ${s.name}`, id: "wordForm" + i })),
+    ...DATA.transformations.sets.map((s, i) => ({ label: `📖 Transformations · ${s.name}`, id: "transform" + i })),
+    ...DATA.reading.sets.map((s, i) => ({ label: `📖 ${s.name}`, id: "reading" + i })),
+    ...DATA.listening.map((rec, i) => ({ label: `🎧 ${rec.title.split("·")[0].trim()}`, id: "listen" + i })),
+    ...DATA.grammar.sets.map((s, i) => ({ label: `🧩 Gramática · ${s.name}`, id: "grammar" + i })),
     { label: "🃏 Vocabulario", id: "vocab" },
-    { label: "✍️ Essay", id: "writing_essay" },
-    { label: "✍️ Article", id: "writing_article" },
-    { label: "✍️ Email", id: "writing_email" },
-    { label: "✍️ Review", id: "writing_review" }
+    ...DATA.writing.tasks.map(t => ({ label: `✍️ ${t.label.split("·")[1].trim()}`, id: "writing_" + t.id }))
   ];
 
   const done = sections.filter(s => (S.completed[s.id] || 0) >= 75).length;
