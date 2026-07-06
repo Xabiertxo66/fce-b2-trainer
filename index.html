@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B2 First Trainer — Tu camino al First Certificate</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="logo">
+      <span class="logo-icon">🎓</span>
+      <div>
+        <h1>B2 First<br>Trainer</h1>
+        <p>Cambridge English</p>
+      </div>
+    </div>
+
+    <nav id="nav">
+      <button class="nav-btn active" data-view="home">🏠 Inicio</button>
+      <button class="nav-btn" data-view="reading">📖 Reading &amp; Use of English</button>
+      <button class="nav-btn" data-view="writing">✍️ Writing</button>
+      <button class="nav-btn" data-view="listening">🎧 Listening</button>
+      <button class="nav-btn" data-view="speaking">🗣️ Speaking</button>
+      <button class="nav-btn" data-view="vocab">🃏 Vocabulario</button>
+      <button class="nav-btn" data-view="grammar">🧩 Gramática</button>
+      <button class="nav-btn" data-view="progress">📊 Mi progreso</button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="xp-pill" id="xpPill">⭐ 0 XP</div>
+      <div class="streak-pill" id="streakPill">🔥 Racha: 0 días</div>
+    </div>
+  </aside>
+
+  <main class="content" id="main">
+    <!-- Las vistas se renderizan aquí con JavaScript -->
+  </main>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
