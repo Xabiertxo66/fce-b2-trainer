@@ -47,14 +47,14 @@ const DATA = {
           " seeing foxes disappear from their streets."
         ],
         gaps: [
-          { options: ["spotted", "appeared", "looked", "shown"], answer: 0 },
-          { options: ["provide", "give", "offer", "deliver"], answer: 0 },
-          { options: ["estimate", "count", "measure", "value"], answer: 0 },
-          { options: ["reputation", "celebrity", "opinion", "impression"], answer: 0 },
-          { options: ["rather", "prefer", "like", "want"], answer: 0 },
-          { options: ["ways", "sides", "directions", "paths"], answer: 0 },
-          { options: ["fond", "keen", "interested", "pleased"], answer: 0 },
-          { options: ["hate", "refuse", "deny", "avoid"], answer: 0 }
+          { options: ["appeared", "spotted", "looked", "shown"], answer: 1 },
+          { options: ["give", "offer", "deliver", "provide"], answer: 3 },
+          { options: ["count", "estimate", "measure", "value"], answer: 1 },
+          { options: ["celebrity", "opinion", "reputation", "impression"], answer: 2 },
+          { options: ["prefer", "like", "want", "rather"], answer: 3 },
+          { options: ["sides", "ways", "directions", "paths"], answer: 1 },
+          { options: ["keen", "interested", "fond", "pleased"], answer: 2 },
+          { options: ["refuse", "deny", "avoid", "hate"], answer: 3 }
         ]
       },
       {
@@ -71,14 +71,14 @@ const DATA = {
           " best for you."
         ],
         gaps: [
-          { options: ["work", "take", "put", "get"], answer: 0 },
-          { options: ["reduce", "descend", "decline", "shorten"], answer: 0 },
-          { options: ["effect", "affect", "damage", "harm"], answer: 0 },
-          { options: ["instead", "apart", "except", "out"], answer: 0 },
-          { options: ["play", "make", "do", "keep"], answer: 0 },
-          { options: ["whereas", "despite", "unless", "moreover"], answer: 0 },
-          { options: ["cope", "manage", "handle", "face"], answer: 0 },
-          { options: ["works", "goes", "does", "results"], answer: 0 }
+          { options: ["take", "put", "work", "get"], answer: 2 },
+          { options: ["descend", "reduce", "decline", "shorten"], answer: 1 },
+          { options: ["affect", "damage", "harm", "effect"], answer: 3 },
+          { options: ["apart", "except", "instead", "out"], answer: 2 },
+          { options: ["make", "play", "do", "keep"], answer: 1 },
+          { options: ["despite", "unless", "moreover", "whereas"], answer: 3 },
+          { options: ["manage", "cope", "handle", "face"], answer: 1 },
+          { options: ["goes", "does", "works", "results"], answer: 2 }
         ]
       }
     ]
